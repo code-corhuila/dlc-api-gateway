@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - qa
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    name: Build, nginx -t and smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate promotion trace
+        if: ${{ github.event_name == 'pull_request' && (github.base_ref == 'qa' || github.base_ref == 'main') }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          RANGE="${BASE_SHA}..${HEAD_SHA}"
+
+          if [ -n "$(git rev-list --merges "$RANGE")" ]; then
+            echo "::error::Merge commits are not allowed in promotion PRs."
+            exit 1
+          fi
+
+          for commit in $(git rev-list "$RANGE"); do
+            if ! git log -1 --pretty=%B "$commit" | grep -Eq '\(cherry picked from commit [0-9a-f]{7,40}\)'; then
+              echo "::error::Commit $commit lacks the cherry-pick -x trace."
+              exit 1
+            fi
+          done
+
+      - name: Build Docker image
+        run: docker build -f deploy/Dockerfile -t dlc-api-gateway:ci .
+
+      - name: Validate configuration
+        run: docker run --rm dlc-api-gateway:ci nginx -t
+
+      - name: Start gateway
+        run: |
+          docker run -d --name dlc-api-gateway-ci -p 8080:8080 dlc-api-gateway:ci
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:8080/health && exit 0
+            sleep 1
+          done
+          docker logs dlc-api-gateway-ci
+          exit 1
+
+      - name: Smoke tests
+        run: GATEWAY_URL=http://localhost:8080 bash tests/smoke.sh
+
+      - name: Gateway log
+        if: always()
+        run: docker logs dlc-api-gateway-ci || true
