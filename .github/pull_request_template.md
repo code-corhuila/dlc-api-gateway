@@ -51,7 +51,8 @@ Not applicable for normal development Pull Requests into `develop`.
 - [ ] Caller-supplied identity headers are removed and `/internal/v1` is never routed.
 - [ ] Upstreams use a variable in `proxy_pass` so a stopped service only fails its own route.
 - [ ] No secrets, tokens, private keys, or real `.env` files are committed.
+- [ ] No schema changes outside the `-db` repositories (the Gateway has no datastore).
 - [ ] No credentials, cookies or request bodies are logged.
 - [ ] Routes remain aligned with `07-api/contracts/openapi/api-gateway.yaml` in `dlc-docs`.
 - [ ] `nginx -t` and `tests/smoke.sh` pass.
-- [ ] The Pull Request references its corresponding user story or task.
+- [ ] The Pull Request references its user story in `code-corhuila/dlc-docs#NN`.
