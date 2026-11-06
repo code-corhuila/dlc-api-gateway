@@ -11,6 +11,8 @@ COPY nginx/snippets/ /etc/nginx/snippets/
 COPY nginx/routes/ /etc/nginx/routes/
 
 ENV GATEWAY_ALLOWED_ORIGIN=http://localhost:8080
+# Trust no proxy by default: X-Forwarded-For is ignored until the front address is configured.
+ENV GATEWAY_TRUSTED_PROXY=127.0.0.1/32
 
 EXPOSE 8080
 

@@ -28,7 +28,7 @@ docker compose -f deploy/compose.yml up -d --build
 # Smoke tests against stand-in owner services (stops the IAM stand-in at the end)
 docker compose -f tests/compose.smoke.yml up -d --build
 GATEWAY_URL=http://localhost:18080 GATEWAY_CONTAINER=dlc-smoke-gateway \
-  SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service bash tests/smoke.sh
+  SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service SMOKE_PROXY_URL=http://localhost:18081 bash tests/smoke.sh
 docker compose -f tests/compose.smoke.yml down
 ```
 
