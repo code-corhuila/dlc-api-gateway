@@ -64,7 +64,7 @@ jobs:
         run: |
           GATEWAY_URL=http://localhost:18080 SMOKE_ORIGIN=http://localhost:8080 \
           GATEWAY_CONTAINER=dlc-smoke-gateway SMOKE_STUB_CONTAINER=dlc-smoke-patients-api \
-          SMOKE_STOP_CONTAINER=dlc-smoke-iam-api bash tests/smoke.sh
+          SMOKE_STOP_CONTAINER=dlc-smoke-auth-service bash tests/smoke.sh
 
       - name: Smoke environment logs
         if: always()
