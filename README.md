@@ -16,14 +16,14 @@ Governance, requirements, contracts and decisions live in [`code-corhuila/dlc-do
 
 ## Status
 
-Under construction. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution and `404 NOT_FOUND` with the common envelope. Pending: correlation and CORS, domain routes, credential presence filter and rate limits.
+Under construction. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution, `404 NOT_FOUND` with the common envelope, `X-Correlation-Id` (reused or generated, returned and logged) and CORS limited to the `dlc-front` origin. Pending: domain routes, credential presence filter and rate limits.
 
 ## Run locally
 
 ```bash
 docker network create platform   # once, if it does not exist
 docker compose -f deploy/compose.yml up -d --build
-GATEWAY_URL=http://localhost:8000 bash tests/smoke.sh
+GATEWAY_URL=http://localhost:8000 SMOKE_ORIGIN=http://localhost:8080 GATEWAY_CONTAINER=dlc-api-gateway bash tests/smoke.sh
 ```
 
 ## Branching
