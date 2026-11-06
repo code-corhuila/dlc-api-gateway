@@ -1,0 +1,40 @@
+# Smoke environment: the gateway image plus stand-in owner services under the real service names.
+# docker compose -f tests/compose.smoke.yml up -d --build && bash tests/smoke.sh
+name: dlc-api-gateway-smoke
+
+x-stub: &stub
+  image: nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+  volumes:
+    - ./stub/stub.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+services:
+  api-gateway:
+    container_name: dlc-smoke-gateway
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      GATEWAY_ALLOWED_ORIGIN: http://localhost:8080
+    ports:
+      - "${SMOKE_PORT:-18080}:8080"
+
+  iam-api:
+    <<: *stub
+    container_name: dlc-smoke-iam-api
+    environment: { SERVICE_NAME: iam }
+  patients-api:
+    <<: *stub
+    container_name: dlc-smoke-patients-api
+    environment: { SERVICE_NAME: patients }
+  appointments-api:
+    <<: *stub
+    container_name: dlc-smoke-appointments-api
+    environment: { SERVICE_NAME: appointments }
+  clinical-api:
+    <<: *stub
+    container_name: dlc-smoke-clinical-api
+    environment: { SERVICE_NAME: clinical }
+  billing-api:
+    <<: *stub
+    container_name: dlc-smoke-billing-api
+    environment: { SERVICE_NAME: billing }
