@@ -50,19 +50,22 @@ jobs:
       - name: Validate configuration
         run: docker run --rm dlc-api-gateway:ci nginx -t
 
-      - name: Start gateway
+      - name: Start smoke environment
         run: |
-          docker run -d --name dlc-api-gateway-ci -p 8080:8080 -e GATEWAY_ALLOWED_ORIGIN=http://localhost:8080 dlc-api-gateway:ci
+          docker compose -f tests/compose.smoke.yml up -d --build
           for i in $(seq 1 20); do
-            curl -fsS http://localhost:8080/health && exit 0
+            curl -fsS http://localhost:18080/health && exit 0
             sleep 1
           done
-          docker logs dlc-api-gateway-ci
+          docker compose -f tests/compose.smoke.yml logs
           exit 1
 
       - name: Smoke tests
-        run: GATEWAY_URL=http://localhost:8080 SMOKE_ORIGIN=http://localhost:8080 GATEWAY_CONTAINER=dlc-api-gateway-ci bash tests/smoke.sh
+        run: |
+          GATEWAY_URL=http://localhost:18080 SMOKE_ORIGIN=http://localhost:8080 \
+          GATEWAY_CONTAINER=dlc-smoke-gateway SMOKE_STUB_CONTAINER=dlc-smoke-patients-api \
+          SMOKE_STOP_CONTAINER=dlc-smoke-iam-api bash tests/smoke.sh
 
-      - name: Gateway log
+      - name: Smoke environment logs
         if: always()
-        run: docker logs dlc-api-gateway-ci || true
+        run: docker compose -f tests/compose.smoke.yml logs || true
