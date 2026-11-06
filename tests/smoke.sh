@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Annex F checks run against a running gateway.
-# Usage: GATEWAY_URL=http://localhost:8080 SMOKE_ORIGIN=http://localhost:8080 [GATEWAY_CONTAINER=name] tests/smoke.sh
-# SMOKE_ORIGIN must equal GATEWAY_ALLOWED_ORIGIN of the gateway. GATEWAY_CONTAINER enables the log check.
+# Runs against tests/compose.smoke.yml (gateway plus stand-in owner services):
+#   docker compose -f tests/compose.smoke.yml up -d --build
+#   GATEWAY_URL=http://localhost:18080 GATEWAY_CONTAINER=dlc-smoke-gateway \
+#   SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-iam-api bash tests/smoke.sh
+# SMOKE_ORIGIN must equal GATEWAY_ALLOWED_ORIGIN. The *_CONTAINER variables enable the log and
+# stopped-service checks; SMOKE_STOP_CONTAINER is stopped by the script.
 set -u
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 SMOKE_ORIGIN="${SMOKE_ORIGIN:-http://localhost:8080}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-}"
+SMOKE_STUB_CONTAINER="${SMOKE_STUB_CONTAINER:-}"
+SMOKE_STOP_CONTAINER="${SMOKE_STOP_CONTAINER:-}"
 failures=0
 body_file="$(mktemp)"
 headers_file="$(mktemp)"
@@ -86,6 +92,98 @@ check "unknown origin gets no Access-Control-Allow-Origin" '! header_has "^Acces
 
 request OPTIONS /api/v1/patients -H "Origin: https://unknown.example" -H "Access-Control-Request-Method: POST"
 check "preflight from unknown origin gets no Access-Control-Allow-Origin" '! header_has "^Access-Control-Allow-Origin:"'
+
+# Domain routes (smoke environment): each owner route reaches its service with /api/v1 preserved
+TOKEN="Bearer smoke-token"
+for pair in "patients:/api/v1/patients" "patients:/api/v1/patients/0b1c" \
+            "appointments:/api/v1/appointments" "appointments:/api/v1/dentists/0b1c/availability" "appointments:/api/v1/clinical-assignments" \
+            "clinical:/api/v1/clinical-records/0b1c/entries" "clinical:/api/v1/treatments" "clinical:/api/v1/procedures/0b1c/completions" \
+            "clinical:/api/v1/care-closures/0b1c" "clinical:/api/v1/clinical-entries/0b1c/amendments" "clinical:/api/v1/clinical-analytics/dashboard" \
+            "billing:/api/v1/invoices" "billing:/api/v1/procedure-prices" "billing:/api/v1/additional-price-rules" "billing:/api/v1/billable-items" "billing:/api/v1/manual-charges" \
+            "iam:/api/v1/auth/staff"; do
+  service="${pair%%:*}"; path="${pair#*:}"
+  request GET "$path" -H "Authorization: $TOKEN"
+  check "$path routes to $service" '[ "$status" = 200 ] && body_has "\"service\":\"$service\"" && body_has "\"path\":\"$path\""'
+done
+
+request GET /api/v1/patientsx -H "Authorization: $TOKEN"
+check "a lookalike prefix is not routed" '[ "$status" = 404 ] && body_has "\"message\":\"The requested route does not exist.\""'
+
+# Credential presence filter (Norma 5.6.2): protected route without Authorization
+request GET /api/v1/patients
+check "protected route without Authorization responds 401" '[ "$status" = 401 ]'
+check "401 uses the UNAUTHORIZED envelope with traceId" 'body_has "\"error\":\"UNAUTHORIZED\"" && body_has "\"traceId\":"'
+check "401 carries a Bearer challenge and the correlation id" 'header_has "^WWW-Authenticate: Bearer" && [ -n "$(header_value X-Correlation-Id)" ]'
+request GET /api/v1/auth/staff
+check "protected Auth route without Authorization responds 401" '[ "$status" = 401 ] && body_has "\"error\":\"UNAUTHORIZED\""'
+
+# Public Auth entry points reach IAM without Authorization (security: [] in the contract)
+for path in /api/v1/auth/email-verifications /api/v1/auth/password-recovery-requests /api/v1/auth/password-resets \
+            /api/v1/auth/jwks /api/v1/auth/refresh /api/v1/auth/logout /api/v1/auth/csrf; do
+  request GET "$path"
+  check "public $path reaches IAM without Authorization" '[ "$status" = 200 ] && body_has "\"service\":\"iam\""'
+done
+
+# dlc-docs#127 criterion 3: routed login keeps body, refresh cookie and no-store unchanged
+request POST /api/v1/auth/login -H "Content-Type: application/json" --data '{"email":"a@b.c","password":"x"}'
+check "routed login keeps the IAM body" '[ "$status" = 200 ] && body_has "\"accessToken\":\"stub-access\""'
+check "routed login keeps the HttpOnly Secure SameSite refresh cookie" 'header_has "^Set-Cookie: dlc_refresh=stub-refresh; Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict"'
+check "routed login keeps Cache-Control no-store" 'header_has "^Cache-Control: no-store"'
+
+# dlc-docs#126 criterion 4: caller-supplied identity headers never reach the owner
+request GET /api/v1/auth/staff -H "Authorization: $TOKEN" -H "X-User-Id: forged-admin" -H "X-User-Role: ADMINISTRATOR"
+check "caller-supplied X-User-Id and X-User-Role are stripped" 'body_has "\"xUserId\":\"\"" && body_has "\"xUserRole\":\"\""'
+check "Authorization is forwarded for owner-side validation" 'body_has "\"authorization\":\"$TOKEN\""'
+
+# Owner errors pass through untouched
+request GET /api/v1/invoices/missing -H "Authorization: $TOKEN"
+check "owner error passes through untouched" '[ "$status" = 404 ] && body_has "\"message\":\"Reported by billing\""'
+
+# Correlation reaches the service, comes back and is logged by both
+routed="smoke-routed-$(date +%s)-$RANDOM"
+request GET /api/v1/patients -H "Authorization: $TOKEN" -H "X-Correlation-Id: $routed"
+check "correlation id is forwarded to the service" 'body_has "\"correlationId\":\"$routed\""'
+check "correlation id is returned once" '[ "$(grep -ci "^X-Correlation-Id:" "$headers_file")" = 1 ] && [ "$(header_value X-Correlation-Id)" = "$routed" ]'
+if [ -n "$SMOKE_STUB_CONTAINER" ]; then
+  sleep 1
+  check "service log records the correlation id" 'docker logs "$SMOKE_STUB_CONTAINER" 2>/dev/null | grep -q "\"correlationId\":\"$routed\""'
+fi
+
+# A stopped domain answers 503 on its route only (Norma 5.6.3). Runs last: it stops a container.
+if [ -n "$SMOKE_STOP_CONTAINER" ]; then
+  docker stop "$SMOKE_STOP_CONTAINER" >/dev/null
+  sleep 1
+  request GET /api/v1/auth/jwks
+  check "stopped service route responds 503 SERVICE_UNAVAILABLE" '[ "$status" = 503 ] && body_has "\"error\":\"SERVICE_UNAVAILABLE\"" && body_has "\"traceId\":"'
+  request GET /api/v1/patients -H "Authorization: $TOKEN"
+  check "other routes keep working" '[ "$status" = 200 ] && body_has "\"service\":\"patients\""'
+  request GET /health
+  check "gateway stays healthy" '[ "$status" = 200 ]'
+fi
+
+
+# Rate limits (Norma 5.6, explicit): run last because they exhaust the per-IP budgets.
+# Login: 10 attempts per IP in five minutes. The routed login check above already spent one.
+login_status=""
+for i in $(seq 1 12); do
+  request POST /api/v1/auth/login -H "Content-Type: application/json" --data '{}'
+  if [ "$status" = 429 ]; then login_status=429; break; fi
+done
+check "login is limited to 10 attempts per IP (429 within 12)" '[ "$login_status" = 429 ] && [ "$i" -le 11 ]'
+check "429 uses the TOO_MANY_REQUESTS envelope with traceId" 'body_has "\"error\":\"TOO_MANY_REQUESTS\"" && body_has "\"traceId\":"'
+check "429 carries Retry-After" '[ -n "$(header_value Retry-After)" ]'
+check "429 carries the correlation id" '[ -n "$(header_value X-Correlation-Id)" ]'
+
+# General API: 100 requests per minute per IP with a burst of 50
+general_status=""
+for i in $(seq 1 250); do
+  request GET /api/v1/patients -H "Authorization: $TOKEN"
+  if [ "$status" = 429 ]; then general_status=429; break; fi
+done
+check "general API limit answers 429 once the burst is spent" '[ "$general_status" = 429 ] && body_has "\"error\":\"TOO_MANY_REQUESTS\"" && [ -n "$(header_value Retry-After)" ]'
+request GET /health
+check "health is not rate limited" '[ "$status" = 200 ]'
+
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures check(s) failed"
