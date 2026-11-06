@@ -153,13 +153,36 @@ fi
 if [ -n "$SMOKE_STOP_CONTAINER" ]; then
   docker stop "$SMOKE_STOP_CONTAINER" >/dev/null
   sleep 1
-  request POST /api/v1/auth/login -H "Content-Type: application/json" --data '{}'
+  request GET /api/v1/auth/jwks
   check "stopped service route responds 503 SERVICE_UNAVAILABLE" '[ "$status" = 503 ] && body_has "\"error\":\"SERVICE_UNAVAILABLE\"" && body_has "\"traceId\":"'
   request GET /api/v1/patients -H "Authorization: $TOKEN"
   check "other routes keep working" '[ "$status" = 200 ] && body_has "\"service\":\"patients\""'
   request GET /health
   check "gateway stays healthy" '[ "$status" = 200 ]'
 fi
+
+
+# Rate limits (Norma 5.6, explicit): run last because they exhaust the per-IP budgets.
+# Login: 10 attempts per IP in five minutes. The routed login check above already spent one.
+login_status=""
+for i in $(seq 1 12); do
+  request POST /api/v1/auth/login -H "Content-Type: application/json" --data '{}'
+  if [ "$status" = 429 ]; then login_status=429; break; fi
+done
+check "login is limited to 10 attempts per IP (429 within 12)" '[ "$login_status" = 429 ] && [ "$i" -le 11 ]'
+check "429 uses the TOO_MANY_REQUESTS envelope with traceId" 'body_has "\"error\":\"TOO_MANY_REQUESTS\"" && body_has "\"traceId\":"'
+check "429 carries Retry-After" '[ -n "$(header_value Retry-After)" ]'
+check "429 carries the correlation id" '[ -n "$(header_value X-Correlation-Id)" ]'
+
+# General API: 100 requests per minute per IP with a burst of 50
+general_status=""
+for i in $(seq 1 250); do
+  request GET /api/v1/patients -H "Authorization: $TOKEN"
+  if [ "$status" = 429 ]; then general_status=429; break; fi
+done
+check "general API limit answers 429 once the burst is spent" '[ "$general_status" = 429 ] && body_has "\"error\":\"TOO_MANY_REQUESTS\"" && [ -n "$(header_value Retry-After)" ]'
+request GET /health
+check "health is not rate limited" '[ "$status" = 200 ]'
 
 
 if [ "$failures" -gt 0 ]; then
