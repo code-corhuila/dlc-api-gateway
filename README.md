@@ -1,25 +1,39 @@
 # dlc-api-gateway
 
-> Single entry point: authentication, routing and rate limiting
+> Single public HTTP entry point — routing, edge credential checks and rate limiting.
 
-Part of the **LMS Library** distributed system — team `lms-library`, Grupo 2.
-Governance and documentation live in [`library-docs`](https://github.com/code-corhuila/library-docs).
+Part of the **Di Lucca Dental Care & Technology** distributed system. The Gateway routes staff web requests on `/api/v1` to the owner APIs (Auth/IAM, Patients, Appointments, Clinical and Billing). It is a supporting component, not a business service: it owns no patient, appointment, clinical or financial data and has no business datastore. Each owner service rechecks resource authorization; the Gateway never exposes private `/internal/v1` routes.
+
+Governance, requirements, contracts and decisions live in [`code-corhuila/dlc-docs`](https://github.com/code-corhuila/dlc-docs):
+
+| Topic | Location in dlc-docs |
+|---|---|
+| Service definition | `09-microservices/services/01-api-gateway/` |
+| Aggregate route contract | `07-api/contracts/openapi/api-gateway.yaml` |
+| Authentication and session transport | `07-api/authentication.md` |
+| Repository boundary | `09-microservices/transversal-repositories.md` |
+| Communication patterns | `09-microservices/communication-patterns.md` |
+
+## Status
+
+Under construction. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution, `404 NOT_FOUND` with the common envelope, `X-Correlation-Id` (reused or generated, returned and logged) and CORS limited to the `dlc-front` origin. Pending: domain routes, credential presence filter and rate limits.
+
+## Run locally
+
+```bash
+docker network create platform   # once, if it does not exist
+docker compose -f deploy/compose.yml up -d --build
+GATEWAY_URL=http://localhost:8000 SMOKE_ORIGIN=http://localhost:8080 GATEWAY_CONTAINER=dlc-api-gateway bash tests/smoke.sh
+```
 
 ## Branching
 
-Three permanent branches. **None of them accepts a direct commit** — you enter through a child
-branch and leave through a Pull Request.
+Permanent branches do not accept direct commits.
 
+```text
+develop  <--PR--  feat/... fix/... test/... chore/...
+qa       <--PR--  promotion/qa-api-gateway-N
+main     <--PR--  release/... hotfix/...
 ```
-develop  <--PR--  feat/... fix/... chore/...
-qa       <--PR--  qa/...
-main     <--PR--  release/...  hotfix/...
-```
 
-Promotion happens **by re-application** (`git cherry-pick -x`), never by merging one permanent
-branch into another: `merge develop -> qa` and `merge qa -> main` do not exist in this model.
-
-`main` requires **1 approval from `ariel5253`**. On `develop` and `qa` the team sets its own review
-rule.
-
-Full policy: `00-governance/branching-policy.md` in `library-docs`.
+Promotion re-applies `develop` commits with `git cherry-pick -x`; permanent branches are never merged into each other. Changes to `main` require the teacher's approval. See `00-governance/branching-policy.md` in dlc-docs.

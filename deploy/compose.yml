@@ -1,0 +1,21 @@
+# The gateway is the only service that publishes a port to the host (Annex G).
+# Owner services join the same external network and are reached by their service name.
+name: dlc-api-gateway
+
+services:
+  api-gateway:
+    container_name: dlc-api-gateway
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "${GATEWAY_PORT:-8000}:8080"
+    environment:
+      GATEWAY_ALLOWED_ORIGIN: ${GATEWAY_ALLOWED_ORIGIN:-http://localhost:8080}
+    networks: [platform]
+    restart: unless-stopped
+
+networks:
+  platform:
+    name: ${PLATFORM_NETWORK:-platform}
+    external: true
