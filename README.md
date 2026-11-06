@@ -16,7 +16,7 @@ Governance, requirements, contracts and decisions live in [`code-corhuila/dlc-do
 
 ## Status
 
-Feature complete for HU-IAM-001 scope. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution, `404 NOT_FOUND` with the common envelope, `X-Correlation-Id` (reused or generated, returned and logged) and CORS limited to the `dlc-front` origin. Domain routes to the five owner services (`iam-api`, `patients-api`, `appointments-api`, `clinical-api`, `billing-api` on port 8080), the credential presence filter (`401 UNAUTHORIZED`), caller identity headers removed and `503 SERVICE_UNAVAILABLE` per route when a service is down. Rate limits per client IP: login 10 attempts in five minutes, general API 100 requests per minute with a burst of 50, both answering `429 TOO_MANY_REQUESTS` with `Retry-After`.
+Feature complete for HU-IAM-001 scope. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution, `404 NOT_FOUND` with the common envelope, `X-Correlation-Id` (reused or generated, returned and logged) and CORS limited to the `dlc-front` origin. Domain routes to the five owner services (`auth-service`, `patients-api`, `appointments-api`, `clinical-api`, `billing-api` on port 8080; `billing-api` is provisional until dlc-billing-api defines its compose service), the credential presence filter (`401 UNAUTHORIZED`), caller identity headers removed and `503 SERVICE_UNAVAILABLE` per route when a service is down. Rate limits per client IP: login 10 attempts in five minutes, general API 100 requests per minute with a burst of 50, both answering `429 TOO_MANY_REQUESTS` with `Retry-After`.
 
 ## Run locally
 
@@ -28,7 +28,7 @@ docker compose -f deploy/compose.yml up -d --build
 # Smoke tests against stand-in owner services (stops the IAM stand-in at the end)
 docker compose -f tests/compose.smoke.yml up -d --build
 GATEWAY_URL=http://localhost:18080 GATEWAY_CONTAINER=dlc-smoke-gateway \
-  SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-iam-api bash tests/smoke.sh
+  SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service bash tests/smoke.sh
 docker compose -f tests/compose.smoke.yml down
 ```
 

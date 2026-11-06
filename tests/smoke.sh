@@ -3,7 +3,7 @@
 # Runs against tests/compose.smoke.yml (gateway plus stand-in owner services):
 #   docker compose -f tests/compose.smoke.yml up -d --build
 #   GATEWAY_URL=http://localhost:18080 GATEWAY_CONTAINER=dlc-smoke-gateway \
-#   SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-iam-api bash tests/smoke.sh
+#   SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service bash tests/smoke.sh
 # SMOKE_ORIGIN must equal GATEWAY_ALLOWED_ORIGIN. The *_CONTAINER variables enable the log and
 # stopped-service checks; SMOKE_STOP_CONTAINER is stopped by the script.
 set -u
