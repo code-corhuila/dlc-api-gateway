@@ -64,6 +64,7 @@ request GET /api/v1/does-not-exist
 generated="$(header_value X-Correlation-Id)"
 check "correlation id is generated when absent" '[ -n "$generated" ]'
 check "generated correlation id is the envelope traceId" '[ -n "$generated" ] && body_has "\"traceId\":\"$generated\""'
+check "generated correlation id is a version 4 UUID (owners put it in event metadata)" 'echo "$generated" | grep -Eq "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"'
 
 sent="smoke-$(date +%s)-$RANDOM"
 request GET /api/v1/does-not-exist -H "X-Correlation-Id: $sent"
