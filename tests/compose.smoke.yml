@@ -18,9 +18,9 @@ services:
     ports:
       - "${SMOKE_PORT:-18080}:8080"
 
-  iam-api:
+  auth-service:
     <<: *stub
-    container_name: dlc-smoke-iam-api
+    container_name: dlc-smoke-auth-service
     environment: { SERVICE_NAME: iam }
   patients-api:
     <<: *stub
