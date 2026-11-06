@@ -52,7 +52,7 @@ jobs:
 
       - name: Start gateway
         run: |
-          docker run -d --name dlc-api-gateway-ci -p 8080:8080 dlc-api-gateway:ci
+          docker run -d --name dlc-api-gateway-ci -p 8080:8080 -e GATEWAY_ALLOWED_ORIGIN=http://localhost:8080 dlc-api-gateway:ci
           for i in $(seq 1 20); do
             curl -fsS http://localhost:8080/health && exit 0
             sleep 1
@@ -61,7 +61,7 @@ jobs:
           exit 1
 
       - name: Smoke tests
-        run: GATEWAY_URL=http://localhost:8080 bash tests/smoke.sh
+        run: GATEWAY_URL=http://localhost:8080 SMOKE_ORIGIN=http://localhost:8080 GATEWAY_CONTAINER=dlc-api-gateway-ci bash tests/smoke.sh
 
       - name: Gateway log
         if: always()
