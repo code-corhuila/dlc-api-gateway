@@ -3,7 +3,7 @@
 # Runs against tests/compose.smoke.yml (gateway plus stand-in owner services):
 #   docker compose -f tests/compose.smoke.yml up -d --build
 #   GATEWAY_URL=http://localhost:18080 GATEWAY_CONTAINER=dlc-smoke-gateway \
-#   SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service bash tests/smoke.sh
+#   SMOKE_STUB_CONTAINER=dlc-smoke-patients-api SMOKE_STOP_CONTAINER=dlc-smoke-auth-service SMOKE_PROXY_URL=http://localhost:18081 bash tests/smoke.sh
 # SMOKE_ORIGIN must equal GATEWAY_ALLOWED_ORIGIN. The *_CONTAINER variables enable the log and
 # stopped-service checks; SMOKE_STOP_CONTAINER is stopped by the script.
 set -u
@@ -13,6 +13,7 @@ SMOKE_ORIGIN="${SMOKE_ORIGIN:-http://localhost:8080}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-}"
 SMOKE_STUB_CONTAINER="${SMOKE_STUB_CONTAINER:-}"
 SMOKE_STOP_CONTAINER="${SMOKE_STOP_CONTAINER:-}"
+SMOKE_PROXY_URL="${SMOKE_PROXY_URL:-}"
 failures=0
 body_file="$(mktemp)"
 headers_file="$(mktemp)"
@@ -183,6 +184,35 @@ done
 check "general API limit answers 429 once the burst is spent" '[ "$general_status" = 429 ] && body_has "\"error\":\"TOO_MANY_REQUESTS\"" && [ -n "$(header_value Retry-After)" ]'
 request GET /health
 check "health is not rate limited" '[ "$status" = 200 ]'
+
+
+# Client address behind the trusted proxy (dlc-front): budgets are per browser, not per proxy.
+# Runs after the rate limits above, so this host's own budgets are already spent.
+if [ -n "$SMOKE_PROXY_URL" ]; then
+  direct_url="$GATEWAY_URL"
+  # A client outside the trusted proxy cannot mint fresh budgets by sending a different address each time.
+  spoof_status=""
+  for n in 1 2 3 4 5; do
+    request POST /api/v1/auth/login -H "Content-Type: application/json" -H "X-Forwarded-For: 198.51.100.$n" --data '{}'
+    if [ "$status" = 429 ]; then spoof_status=429; break; fi
+  done
+  check "X-Forwarded-For from an untrusted client is ignored (one budget, 429 within 5)" '[ "$spoof_status" = 429 ]'
+
+  GATEWAY_URL="$SMOKE_PROXY_URL"
+  request POST /api/v1/auth/login -H "Content-Type: application/json" -H "X-Test-Client-Ip: 203.0.113.10" --data '{}'
+  check "a browser behind the trusted proxy has its own login budget" '[ "$status" != 429 ]'
+  proxied_status=""
+  for i in $(seq 1 12); do
+    request POST /api/v1/auth/login -H "Content-Type: application/json" -H "X-Test-Client-Ip: 203.0.113.10" --data '{}'
+    if [ "$status" = 429 ]; then proxied_status=429; break; fi
+  done
+  check "that browser is limited once its own 10 attempts are spent" '[ "$proxied_status" = 429 ]'
+  request POST /api/v1/auth/login -H "Content-Type: application/json" -H "X-Test-Client-Ip: 203.0.113.11" --data '{}'
+  check "another browser behind the same proxy is not limited by the first one" '[ "$status" != 429 ]'
+  request GET /api/v1/patients -H "Authorization: $TOKEN" -H "X-Test-Client-Ip: 203.0.113.12"
+  check "general API budget is also per browser behind the proxy" '[ "$status" = 200 ]'
+  GATEWAY_URL="$direct_url"
+fi
 
 
 if [ "$failures" -gt 0 ]; then
