@@ -16,7 +16,15 @@ Governance, requirements, contracts and decisions live in [`code-corhuila/dlc-do
 
 ## Status
 
-Not started. Gateway technology, ports, health routes, environment keys and the generic rate limit remain pending decisions.
+Under construction. Declarative NGINX configuration (Annex F). Delivered: `/health`, JSON access log, per-request DNS resolution and `404 NOT_FOUND` with the common envelope. Pending: correlation and CORS, domain routes, credential presence filter and rate limits.
+
+## Run locally
+
+```bash
+docker network create platform   # once, if it does not exist
+docker compose -f deploy/compose.yml up -d --build
+GATEWAY_URL=http://localhost:8000 bash tests/smoke.sh
+```
 
 ## Branching
 
