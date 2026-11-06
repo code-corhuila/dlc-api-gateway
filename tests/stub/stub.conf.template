@@ -1,0 +1,24 @@
+# Stand-in owner service for the smoke tests. Echoes what the gateway forwarded; never a real API.
+log_format stub_json escape=json '{"service":"${SERVICE_NAME}","correlationId":"$http_x_correlation_id","path":"$uri","status":$status}';
+
+server {
+  listen 8080;
+  default_type application/json;
+  access_log /dev/stdout stub_json;
+
+  # Login-shaped response: body, refresh cookie and no-store must reach the client unchanged.
+  location = /api/v1/auth/login {
+    add_header Set-Cookie "dlc_refresh=stub-refresh; Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict" always;
+    add_header Cache-Control "no-store" always;
+    return 200 '{"accessToken":"stub-access","service":"${SERVICE_NAME}"}';
+  }
+
+  # An owner's own error must pass through the gateway untouched.
+  location ~ /missing$ {
+    return 404 '{"error":"NOT_FOUND","message":"Reported by ${SERVICE_NAME}"}';
+  }
+
+  location / {
+    return 200 '{"service":"${SERVICE_NAME}","path":"$uri","correlationId":"$http_x_correlation_id","xUserId":"$http_x_user_id","xUserRole":"$http_x_user_role","authorization":"$http_authorization"}';
+  }
+}
