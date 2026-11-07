@@ -21,8 +21,12 @@ Feature complete for HU-IAM-001 scope. Declarative NGINX configuration (Annex F)
 ## Run locally
 
 ```bash
-# With the owner services on the platform network
+# With the owner services and dlc-front on the platform network
 docker network create platform   # once, if it does not exist
+# Use dlc-front's exact IP on that network; repeat after recreating the Front.
+FRONT_IP="$(docker inspect -f '{{(index .NetworkSettings.Networks "platform").IPAddress}}' dlc-front)"
+test -n "$FRONT_IP" || { echo 'Connect dlc-front to the platform network first' >&2; exit 1; }
+export GATEWAY_TRUSTED_PROXY="$FRONT_IP/32"
 docker compose -f deploy/compose.yml up -d --build
 
 # Smoke tests against stand-in owner services (stops the IAM stand-in at the end)
