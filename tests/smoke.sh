@@ -101,7 +101,7 @@ for pair in "patients:/api/v1/patients" "patients:/api/v1/patients/0b1c" \
             "appointments:/api/v1/appointments" "appointments:/api/v1/dentists/0b1c/availability" "appointments:/api/v1/clinical-assignments" \
             "clinical:/api/v1/clinical-records/0b1c/entries" "clinical:/api/v1/treatments" "clinical:/api/v1/procedures/0b1c/completions" \
             "clinical:/api/v1/care-closures/0b1c" "clinical:/api/v1/clinical-entries/0b1c/amendments" "clinical:/api/v1/clinical-analytics/dashboard" \
-            "billing:/api/v1/invoices" "billing:/api/v1/procedure-prices" "billing:/api/v1/additional-price-rules" "billing:/api/v1/billable-items" "billing:/api/v1/manual-charges" \
+            "billing:/api/v1/invoices" "billing:/api/v1/procedure-prices" "billing:/api/v1/additional-price-rules" "billing:/api/v1/billable-items" "billing:/api/v1/manual-charges" "billing:/api/v1/encounter-accounts/pending-prices" \
             "iam:/api/v1/auth/staff"; do
   service="${pair%%:*}"; path="${pair#*:}"
   request GET "$path" -H "Authorization: $TOKEN"
